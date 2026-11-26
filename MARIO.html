@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Adventure — 1000 Point Challenge</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #101827; color: white; font-family: system-ui, sans-serif; }
+  .wrap { width: min(94vw, 900px); text-align: center; }
+  h1 { margin: 8px 0; color: #facc15; }
+  .hud { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  button { border:0; padding:10px 15px; border-radius:10px; background:#facc15; color:#182033; font-weight:700; cursor:pointer; }
+  canvas { display:block; width:100%; border:3px solid #fff; border-radius:12px; background:#87ceeb; image-rendering: pixelated; }
+  .help { color:#cbd5e1; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pixel Adventure</h1>
+  <div class="hud">
+    <div><strong>Score:</strong> <span id="score">0</span> / 1000</div>
+    <div><strong>Character:</strong> <span id="charName">Ruby</span></div>
+    <button id="switchBtn">Switch Character (C)</button>
+    <button id="restartBtn">Restart</button>
+  </div>
+  <canvas id="game" width="800" height="400"></canvas>
+  <p class="help">Move: ← → or A/D · Jump: ↑, W or Space · Switch: C · Collect coins, avoid enemies!</p>
+  <p id="message">Collect 20 coins to reach 1000 points!</p>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const nameEl = document.getElementById('charName');
+  const msgEl = document.getElementById('message');
+
+  const characters = [
+    {name:'Ruby', color:'#e63946', hat:'#9d0208'},
+    {name:'Sky', color:'#277da1', hat:'#023e8a'}
+  ];
+  let charIndex=0, score=0, keys={}, gameOver=false, win=false;
+  const player={x:60,y:300,w:28,h:36,vx:0,vy:0,onGround:false};
+  const gravity=0.55, speed=3.5, jump=-11;
+  const groundY=350;
+  let coins=[], enemies=[], platforms=[], camera=0;
+
+  function reset(){
+    score=0; gameOver=false; win=false; camera=0;
+    player.x=60;player.y=300;player.vx=0;player.vy=0;
+    platforms=[
+      {x:170,y:290,w:120,h:14},{x:360,y:250,w:120,h:14},
+      {x:550,y:300,w:130,h:14},{x:760,y:260,w:120,h:14},
+      {x:970,y:220,w:140,h:14},{x:1200,y:290,w:120,h:14},
+      {x:1450,y:250,w:160,h:14},{x:1700,y:300,w:120,h:14},
+      {x:1940,y:230,w:150,h:14},{x:2180,y:280,w:140,h:14}
+    ];
+    coins=[];
+    for(let i=0;i<20;i++){
+      const baseX=160+i*115;
+      const plat=platforms.find(p=>baseX>p.x-25 && baseX<p.x+p.w+25);
+      coins.push({x:baseX,y:plat?plat.y-32:groundY-40-(i%3)*35,r:10,taken:false});
+    }
+    enemies=[
+      {x:430,y:groundY-28,w:26,h:28,min:400,max:520,v:1.3},
+      {x:890,y:groundY-28,w:26,h:28,min:850,max:950,v:1.6},
+      {x:1320,y:groundY-28,w:26,h:28,min:1260,max:1400,v:1.4},
+      {x:1850,y:groundY-28,w:26,h:28,min:1800,max:1900,v:1.7},
+      {x:2240,y:groundY-28,w:26,h:28,min:2200,max:2300,v:1.5}
+    ];
+    scoreEl.textContent=score;msgEl.textContent='Collect 20 coins to reach 1000 points!';
+  }
+  function switchChar(){charIndex=1-charIndex;nameEl.textContent=characters[charIndex].name;}
+  document.getElementById('switchBtn').onclick=switchChar;
+  document.getElementById('restartBtn').onclick=reset;
+  addEventListener('keydown',e=>{
+    if(['ArrowLeft','ArrowRight','ArrowUp',' ','w','a','s','d','c'].includes(e.key.toLowerCase()) || ['ArrowLeft','ArrowRight','ArrowUp'].includes(e.key))e.preventDefault();
+    keys[e.key.toLowerCase()]=true;
+    if(e.key.toLowerCase()==='c')switchChar();
+  });
+  addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+  function rect(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x-camera,y,w,h);}
+  function draw(){
+    // sky and distant scenery
+    ctx.fillStyle='#87ceeb';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#b7e4c7';
+    for(let i=0;i<9;i++){let x=i*180-camera*0.25;ctx.beginPath();ctx.arc(x,350,70,Math.PI,0);ctx.fill();}
+    // ground
+    rect(0,groundY,2500,60,'#4caf50');rect(0,groundY+12,2500,48,'#795548');
+    // platforms
+    platforms.forEach(p=>{rect(p.x,p.y,p.w,p.h,'#8d6e63');rect(p.x,p.y,p.w,5,'#4caf50');});
+    // coins
+    coins.forEach(c=>{if(!c.taken){ctx.beginPath();ctx.fillStyle='#ffd60a';ctx.arc(c.x-camera,c.y,c.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#f59e0b';ctx.lineWidth=3;ctx.stroke();}});
+    // enemies
+    enemies.forEach(e=>{rect(e.x,e.y,e.w,e.h,'#7c3aed');ctx.fillStyle='white';ctx.fillRect(e.x-camera+5,e.y+6,5,6);ctx.fillRect(e.x-camera+16,e.y+6,5,6);});
+    // player: simple custom pixel hero
+    const c=characters[charIndex], x=player.x-camera,y=player.y;
+    ctx.fillStyle=c.hat;ctx.fillRect(x+3,y,22,8);ctx.fillRect(x,y+7,28,5);
+    ctx.fillStyle=c.color;ctx.fillRect(x+4,y+12,20,14);
+    ctx.fillStyle='#ffe0bd';ctx.fillRect(x+7,y+8,15,12);
+    ctx.fillStyle='#1d3557';ctx.fillRect(x+17,y+12,3,4);
+    ctx.fillStyle=c.color;ctx.fillRect(x+2,y+24,10,9);ctx.fillRect(x+17,y+24,10,9);
+    ctx.fillStyle='#5b3a29';ctx.fillRect(x,y+33,12,3);ctx.fillRect(x+17,y+33,12,3);
+    // goal flag
+    rect(2420,groundY-90,6,90,'#374151');rect(2426,groundY-90,45,28,'#f43f5e');
+  }
+  function update(){
+    if(gameOver||win)return;
+    player.vx=0;
+    if(keys['arrowleft']||keys['a'])player.vx=-speed;
+    if(keys['arrowright']||keys['d'])player.vx=speed;
+    if((keys['arrowup']||keys['w']||keys[' '])&&player.onGround){player.vy=jump;player.onGround=false;}
+    player.x+=player.vx;player.vy+=gravity;player.y+=player.vy;player.onGround=false;
+    if(player.x<0)player.x=0;
+    // ground collision
+    if(player.y+player.h>=groundY){player.y=groundY-player.h;player.vy=0;player.onGround=true;}
+    // platform collision while descending
+    platforms.forEach(p=>{
+      if(player.vy>=0 && player.x+player.w>p.x && player.x<p.x+p.w &&
+         player.y+player.h>=p.y && player.y+player.h<=p.y+p.h+player.vy){
+        player.y=p.y-player.h;player.vy=0;player.onGround=true;
+      }
+    });
+    coins.forEach(c=>{
+      if(!c.taken && Math.abs((player.x+player.w/2)-c.x)<24 && Math.abs((player.y+player.h/2)-c.y)<28){
+        c.taken=true;score+=50;scoreEl.textContent=score;
+        if(score>=1000){score=1000;scoreEl.textContent=score;win=true;msgEl.textContent='🎉 You win! 1000 points achieved!';}
+      }
+    });
+    enemies.forEach(e=>{
+      e.x+=e.v;if(e.x<e.min||e.x>e.max)e.v*=-1;
+      if(player.x+player.w>e.x&&player.x<e.x+e.w&&player.y+player.h>e.y&&player.y<e.y+e.h){
+        gameOver=true;msgEl.textContent='Game over! Press Restart to try again.';
+      }
+    });
+    if(player.x>2400){win=true;msgEl.textContent='🏁 Finish reached!';}
+    camera=Math.max(0,Math.min(player.x-250,canvas.width));
+  }
+  function loop(){update();draw();requestAnimationFrame(loop);}
+  reset();loop();
+})();
+</script>
+</body>
+</html>
